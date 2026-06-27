@@ -2,13 +2,16 @@ import SwiftUI
 
 @main
 struct MantleApp: App {
+    @StateObject private var settings = SettingsStore()
+
     var body: some Scene {
         MenuBarExtra("Mantle", systemImage: "circle") {
-            Text("Hello from Mantle")
+            Text("Mantle")
                 .padding()
         }
         Settings {
-            EmptyView()
+            SettingsView()
+                .environmentObject(settings)
         }
     }
 }
