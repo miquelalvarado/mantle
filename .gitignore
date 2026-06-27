@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode build output
+build/
+DerivedData/
+*.xcarchive
+*.xcresult
+
+# Xcode per-user state (machine-specific, not shared)
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Swift Package Manager resolved versions are intentionally committed
+# (Mantle.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved)
+# Local SPM overrides are not
+.swiftpm/
+
+# Instruments
+*.trace
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# CocoaPods (not used here, but excluded defensively)
+Pods/
+Podfile.lock
+
+# fastlane (not used here, excluded defensively)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Claude Code session files
+.claude/projects/
