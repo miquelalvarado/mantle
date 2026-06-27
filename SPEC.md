@@ -621,3 +621,610 @@ Change port to 8081, restart → binds on 8081. Start with occupied port → err
 | `Mantle/Server/ChatHandler.swift` | 4 |
 | `Mantle/Server/ProxyServer.swift` | 4 |
 | `Mantle/Views/MenuBarView.swift` | 5 |
+
+---
+
+## Phase 8 — Xcode 27 MCP Server Integration
+
+### Overview
+
+Phase 8 adds an MCP (Model Context Protocol) server transport alongside the existing OpenAI
+REST proxy. Both modes run simultaneously on the same port. Xcode 27 connects via
+`GET /mcp/sse` (SSE channel) and `POST /mcp/message` (client→server channel) using
+JSON-RPC 2.0. Mantle exposes AWS Bedrock models via MCP's provider registry and streams
+completions as `notifications/progress` events.
+
+**No new SPM dependency is required.** Hummingbird's existing SSE and route capabilities are
+sufficient. The MCP wire protocol is implemented from scratch using Foundation's `JSONEncoder`/
+`JSONDecoder`.
+
+---
+
+### New File Structure
+
+```
+Mantle/
+└── MCP/
+    ├── MCPTypes.swift           — JSON-RPC 2.0 + MCP protocol types (Codable + Sendable)
+    ├── MCPSession.swift         — per-connection actor (SSE continuation + lifecycle state)
+    ├── MCPSessionRegistry.swift — actor; manages [UUID: MCPSession] across connections
+    ├── MCPRouter.swift          — dispatches JSON-RPC methods; enforces initialize lifecycle
+    ├── MCPHandler.swift         — implements initialize, tools/list, tools/call
+    └── MCPStreamAdapter.swift   — wraps Bedrock AsyncThrowingStream → MCP progress notifications
+```
+
+Updates to existing files:
+- `Store/SettingsStore.swift` — add `@AppStorage("mcpEnabled") var mcpEnabled: Bool = false`
+- `Server/ProxyServer.swift` — register `/mcp/sse` and `/mcp/message` routes; pass registry
+- `Views/SettingsView.swift` — add "Mode" tab with the Legacy / MCP toggle
+- `Views/LogConsoleView.swift` — pretty-print JSON-RPC payloads with method label prefix
+
+---
+
+### Component Specifications
+
+#### MCPTypes.swift
+
+All types `Codable + Sendable`.
+
+```swift
+// Polymorphic JSON-RPC ID: string | number | null
+enum JSONRPCId: Codable, Sendable, Equatable {
+    case string(String)
+    case number(Int)
+    case null
+    // Custom init(from:) tries Int first, then String, falls back to .null
+}
+
+struct JSONRPCRequest<P: Codable & Sendable>: Codable, Sendable {
+    let jsonrpc : String       // always "2.0"
+    let id      : JSONRPCId?   // nil → notification (no response expected)
+    let method  : String
+    let params  : P?
+}
+
+struct JSONRPCResponse<R: Codable & Sendable>: Codable, Sendable {
+    let jsonrpc : String
+    let id      : JSONRPCId
+    let result  : R?
+    let error   : JSONRPCErrorObject?
+}
+
+struct JSONRPCErrorObject: Codable, Sendable {
+    let code    : Int
+    let message : String
+    let data    : AnyCodable?   // reuse existing AnyCodable from OpenAITypes.swift
+}
+
+struct JSONRPCNotification<P: Codable & Sendable>: Codable, Sendable {
+    let jsonrpc : String
+    let method  : String
+    let params  : P?
+}
+
+// MCP initialize
+struct MCPInitializeParams: Codable, Sendable {
+    let protocolVersion : String
+    let capabilities    : [String: AnyCodable]?
+    let clientInfo      : MCPClientInfo
+}
+struct MCPClientInfo: Codable, Sendable { let name: String; let version: String }
+struct MCPInitializeResult: Codable, Sendable {
+    let protocolVersion : String
+    let capabilities    : MCPServerCapabilities
+    let serverInfo      : MCPServerInfo
+}
+struct MCPServerCapabilities: Codable, Sendable {
+    let tools        : MCPToolsCapability?
+    let experimental : [String: AnyCodable]?
+}
+struct MCPToolsCapability: Codable, Sendable { let listChanged: Bool? }
+struct MCPServerInfo: Codable, Sendable { let name: String; let version: String }
+
+// MCP tools/list
+struct MCPTool: Codable, Sendable {
+    let name        : String
+    let description : String
+    let inputSchema : [String: AnyCodable]   // JSON Schema object
+}
+struct MCPToolsListResult: Codable, Sendable { let tools: [MCPTool] }
+
+// MCP tools/call
+struct MCPToolCallParams: Codable, Sendable {
+    let name          : String
+    let arguments     : [String: AnyCodable]?
+    let progressToken : JSONRPCId?
+    // Xcode 27 workspace context (extensible bag — unknown keys silently dropped by decoder)
+    let context       : MCPXcodeContext?
+}
+struct MCPXcodeContext: Codable, Sendable {
+    let workspaceState  : AnyCodable?
+    let swiftUIPreviews : AnyCodable?
+    let testLogs        : AnyCodable?
+    // CodingKeys: workspaceState, swiftUIPreviews, testLogs
+    // Unknown keys must be silently ignored — custom init(from:) uses KeyedDecodingContainer
+    //   and reads only the three known keys; all others are discarded without throwing.
+}
+
+// notifications/progress
+struct MCPProgressParams: Codable, Sendable {
+    let progressToken : JSONRPCId
+    let progress      : Int
+    let total         : Int?
+    let value         : MCPProgressValue
+}
+struct MCPProgressValue: Codable, Sendable {
+    let delta        : String?   // streamed text token; nil on final notification
+    let finishReason : String?   // set on final progress notification
+    let usage        : MCPUsage?
+}
+struct MCPUsage: Codable, Sendable { let inputTokens: Int; let outputTokens: Int }
+
+// Standard JSON-RPC 2.0 error codes + MCP extension
+enum JSONRPCErrorCode: Int {
+    case parseError           = -32700
+    case invalidRequest       = -32600
+    case methodNotFound       = -32601
+    case invalidParams        = -32602
+    case internalError        = -32603
+    case serverNotInitialized = -32002
+}
+```
+
+---
+
+#### MCPSession.swift
+
+```swift
+actor MCPSession {
+    enum Lifecycle { case awaitingInitialize, ready }
+
+    let sessionId: UUID
+    private(set) var lifecycle: Lifecycle = .awaitingInitialize
+    private var continuation: AsyncStream<String>.Continuation?
+
+    init(sessionId: UUID)
+
+    // Called by the SSE route handler immediately after creating the AsyncStream
+    func attach(continuation: AsyncStream<String>.Continuation)
+
+    // Frames value as "event: message\ndata: <json>\n\n" and yields to continuation
+    func send<T: Encodable>(_ value: T) throws
+
+    // Yields "event: endpoint\ndata: /mcp/message?sessionId=<id>\n\n"
+    func sendEndpointEvent(port: Int)
+
+    // Yields ": keep-alive\n\n"
+    func sendKeepAlive()
+
+    // Transitions lifecycle to .ready; called by MCPRouter after "initialized" notification
+    func markReady()
+
+    // Finishes the AsyncStream continuation (client disconnect cleanup)
+    func close()
+}
+```
+
+---
+
+#### MCPSessionRegistry.swift
+
+```swift
+actor MCPSessionRegistry {
+    static let shared = MCPSessionRegistry()
+    private var sessions: [UUID: MCPSession] = [:]
+
+    func register(_ session: MCPSession)
+    func remove(sessionId: UUID)
+    func session(for sessionId: UUID) -> MCPSession?
+}
+```
+
+---
+
+#### MCPRouter.swift
+
+Receives a raw `Data` body from `POST /mcp/message`, decodes the JSON-RPC envelope, enforces
+the lifecycle state machine, and dispatches to `MCPHandler`.
+
+```swift
+struct MCPRouter {
+    let handler  : MCPHandler
+    let registry : MCPSessionRegistry
+
+    // Entry point called by the POST /mcp/message route handler.
+    // sessionId comes from the ?sessionId= query parameter.
+    func handle(body: Data, sessionId: UUID) async
+}
+```
+
+Dispatch rules (executed in order):
+1. Decode `JSONRPCRequest<AnyCodable>` — on parse failure send `parseError` (-32700) and return.
+2. Look up session in registry — on miss return silently (SSE channel already gone).
+3. If `session.lifecycle == .awaitingInitialize` AND `method != "initialize"` → send
+   `serverNotInitialized` error (-32002).
+4. If `id == nil` → notification path (never send a response):
+   - `"initialized"` → `session.markReady()`
+   - `"notifications/cancelled"` → cancel in-flight stream (reserved for future implementation)
+   - unknown → silently ignore
+5. Request path — dispatch by `method`:
+   - `"initialize"` → `handler.initialize(params:session:id:)`
+   - `"tools/list"` → `handler.toolsList(session:id:)`
+   - `"tools/call"` → `handler.toolsCall(params:session:id:)`
+   - unknown → send `methodNotFound` error (-32601)
+
+---
+
+#### MCPHandler.swift
+
+```swift
+struct MCPHandler {
+    let settings : SettingsStore
+    let bedrock  : BedrockService
+
+    // "initialize" — reply with MCPInitializeResult.
+    // Do NOT call session.markReady() here; wait for the "initialized" notification
+    // (MCPRouter handles that transition).
+    func initialize(
+        params  : MCPInitializeParams,
+        session : MCPSession,
+        id      : JSONRPCId
+    ) async throws
+
+    // "tools/list" — return one tool named "completion" with JSON Schema:
+    //   { model?: string, messages: [{role, content}], context?: MCPXcodeContext }
+    func toolsList(session: MCPSession, id: JSONRPCId) async throws
+
+    // "tools/call" where params.name == "completion":
+    // 1. Extract messages from params.arguments["messages"]
+    // 2. Extract optional context (unknown fields silently dropped by MCPXcodeContext decoder)
+    // 3. Map context fields → additional SystemContentBlocks (truncated to 8,000 chars each):
+    //      testLogs        → "Test logs:\n<value>"
+    //      workspaceState  → "Workspace:\n<value>"
+    //      swiftUIPreviews → "SwiftUI previews:\n<value>"
+    //    Log [WARN] if truncation occurs.
+    // 4. Call OpenAIToBedrockMapper.map(messages) — on error send invalidParams (-32602)
+    // 5. Append context SystemContentBlocks to the mapped system array
+    // 6. Guard: if arguments["tools"] present → send invalidParams, log [WARN]
+    // 7. ensureClient, stream from BedrockService
+    // 8. Create MCPStreamAdapter and stream progress notifications to session
+    // 9. On completion send final tools/call result: {content:[{type:"text",text:""}]}
+    func toolsCall(
+        params  : MCPToolCallParams,
+        session : MCPSession,
+        id      : JSONRPCId
+    ) async
+}
+```
+
+`MCPHandler` reuses `OpenAIToBedrockMapper.map(_:)` and `BedrockService.stream(input:)`
+directly. No duplication of mapping or streaming logic.
+
+---
+
+#### MCPStreamAdapter.swift
+
+Analogous to `StreamMapper` but emits `notifications/progress` JSON-RPC notifications instead
+of OpenAI SSE chunks.
+
+```swift
+struct MCPStreamAdapter {
+    let session       : MCPSession
+    let progressToken : JSONRPCId?   // nil if client did not request streaming progress
+    let requestId     : JSONRPCId
+    let modelId       : String
+
+    // Iterates Bedrock events and routes to session:
+    // - contentBlockDelta text → notifications/progress (progressToken present)
+    //                            or accumulate in buffer (progressToken nil)
+    // - metadata             → accumulate inputTokens / outputTokens
+    // - messageStop          → final notifications/progress with finishReason + usage,
+    //                          then send tools/call result (empty text if streamed, full buffer if not)
+    // - 15 s silence         → session.sendKeepAlive()
+    // - error mid-stream     → send final notifications/progress with finishReason="error",
+    //                          then send tools/call result with empty content block;
+    //                          never send a JSON-RPC error response after streaming has started
+    func stream(bedrockEvents: some AsyncSequence<ConverseStreamOutput, Error>) async
+}
+```
+
+Streaming behaviour:
+- `progressToken != nil`: each token yields a `notifications/progress` notification; the final
+  `tools/call` result carries an empty `text` content block (tokens already delivered via progress).
+- `progressToken == nil`: all tokens are accumulated in a `String` buffer; the final `tools/call`
+  result carries the full accumulated text in a single content block.
+
+---
+
+#### ProxyServer.swift — route additions
+
+In `start()`, register MCP routes alongside the existing `/v1/*` routes:
+
+```swift
+router.get("/mcp/sse",      use: mcpSSEHandler)
+router.post("/mcp/message", use: mcpMessageHandler)
+```
+
+**`mcpSSEHandler`:**
+1. Create `MCPSession(sessionId: UUID())`
+2. Register in `MCPSessionRegistry.shared`
+3. Create `AsyncStream<String>` and attach its continuation to the session
+4. Send `endpoint` event immediately (`session.sendEndpointEvent(port: settings.port)`)
+5. Start keep-alive `Task` (every 15 s → `session.sendKeepAlive()`); cancel on disconnect
+6. Return SSE `Response` streaming from the `AsyncStream`
+7. On stream finish, call `MCPSessionRegistry.shared.remove(sessionId:)`
+
+**`mcpMessageHandler`:**
+1. Read `sessionId` from query parameter — return HTTP 400 if missing or not a valid UUID
+2. Look up session in registry — return HTTP 404 if not found
+3. Collect body up to 1 MB
+4. Call `MCPRouter.handle(body:sessionId:)` fire-and-forget (response travels over SSE)
+5. Return `Response(status: .accepted)` (empty 202 body)
+
+**`mcpEnabled` guard (applies to both MCP routes):**
+If `settings.mcpEnabled == false`, return HTTP 200 with body:
+```json
+{"jsonrpc":"2.0","id":null,"error":{"code":-32601,"message":"MCP mode disabled in Mantle settings"}}
+```
+JSON-RPC errors must always ride inside a 200 response, not an HTTP error status.
+
+---
+
+#### SettingsStore.swift — addition
+
+```swift
+@AppStorage("mcpEnabled") var mcpEnabled: Bool = false
+```
+
+---
+
+#### SettingsView.swift — "Mode" tab
+
+Add a third tab to the existing `TabView`:
+
+```
+Tab label: "Mode"  (system image: "arrow.triangle.2.circlepath")
+  Form(.grouped) {
+    Section("Proxy Modes") {
+      Toggle("Legacy Proxy (Xcode 26)", isOn: .constant(true))   // always on, disabled
+        .disabled(true)
+      Toggle("MCP Server (Xcode 27+)", isOn: $settings.mcpEnabled)
+    }
+    Section("MCP Endpoints") {
+      LabeledContent("SSE channel",  value: "/mcp/sse")
+        .font(.system(.body, design: .monospaced))
+      LabeledContent("RPC channel",  value: "/mcp/message")
+        .font(.system(.body, design: .monospaced))
+    }
+    Section {
+      Text("Both modes are active simultaneously on the same port. Toggling MCP does not restart the server.")
+        .foregroundColor(.secondary)
+        .font(.callout)
+    }
+  }
+```
+
+---
+
+#### LogConsoleView.swift — MCP log formatting
+
+In the view's per-entry text rendering, add a branch for MCP entries:
+
+- **Detect**: `entry.text.hasPrefix("[MCP]")`
+- **Extract**: find the first `{` in `entry.text`; everything from there is the raw JSON payload
+- **Pretty-print**: re-parse with `JSONSerialization` and re-encode with `.prettyPrinted`; fall
+  back to the raw string if parsing fails
+- **Truncate**: cap the rendered string at 2,000 characters; append `"…(truncated)"` if longer
+- **Colour**: cyan tint (`Color.cyan.opacity(0.9)`), distinct from info (primary), warn (orange),
+  error (red)
+
+---
+
+### SSE Wire Format — MCP Channel
+
+```
+// Sent immediately on GET /mcp/sse connect
+event: endpoint
+data: /mcp/message?sessionId=<uuid>
+
+// JSON-RPC response (reply to a request)
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{...}}
+
+// JSON-RPC notification (no id — server-push)
+event: message
+data: {"jsonrpc":"2.0","method":"notifications/progress","params":{...}}
+
+// Keep-alive (emitted every 15 s of silence)
+: keep-alive
+```
+
+SSE response headers (same as legacy proxy):
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+```
+
+---
+
+### MCP Lifecycle Sequence
+
+```
+Xcode 27                                    Mantle
+  │                                           │
+  │── GET /mcp/sse ──────────────────────────>│
+  │<─ event: endpoint                         │
+  │   data: /mcp/message?sessionId=<uuid> ───│
+  │                                           │
+  │── POST /mcp/message ────────────────────>│  {"jsonrpc":"2.0","id":1,"method":"initialize",...}
+  │<─ event: message                          │
+  │   data: {"id":1,"result":{...}} ─────────│
+  │                                           │
+  │── POST /mcp/message ────────────────────>│  {"jsonrpc":"2.0","method":"initialized"}
+  │   (202 Accepted — no SSE reply sent)      │   ↳ MCPRouter calls session.markReady()
+  │                                           │
+  │── POST /mcp/message ────────────────────>│  {"id":2,"method":"tools/list"}
+  │<─ event: message                          │
+  │   data: {"id":2,"result":{"tools":[...]}} │
+  │                                           │
+  │── POST /mcp/message ────────────────────>│  {"id":3,"method":"tools/call",
+  │                                           │   "params":{"name":"completion",
+  │                                           │    "progressToken":3,
+  │                                           │    "arguments":{"messages":[...],"context":{...}}}}
+  │<─ event: message (×N tokens)              │  notifications/progress (delta token)
+  │<─ event: message (final)                  │  {"id":3,"result":{"content":[{...}]}}
+```
+
+---
+
+### Edge Cases
+
+1. **`id` polymorphism** — `JSONRPCId.init(from:)` tries `Int` first (most common from Xcode),
+   then `String`, then decodes as `.null`. `encode(to:)` writes the underlying value directly.
+   Any decode failure returns `parseError` (-32700).
+
+2. **Session not found on POST** — if the SSE connection was closed between the `endpoint` event
+   and a subsequent `POST /mcp/message`, the registry lookup returns nil; return HTTP 404. No SSE
+   reply is possible, which is correct.
+
+3. **Double `initialize`** — if `initialize` arrives when `lifecycle == .ready`, respond with
+   `invalidRequest` (-32600). Do not reset the session state.
+
+4. **Unknown tool name** — `tools/call` with `name != "completion"` returns `methodNotFound`
+   (-32601).
+
+5. **`tools` field in arguments** — Bedrock Phase 8 does not support tool use. If
+   `arguments["tools"]` is present, return `invalidParams` (-32602) and log `[WARN] MCP tools
+   field not supported`.
+
+6. **Bedrock error mid-stream** — if streaming has already started (at least one
+   `notifications/progress` sent), never send a JSON-RPC error response. Instead emit a final
+   `notifications/progress` with `value.finishReason = "error"` and `value.delta = nil`, then
+   send the `tools/call` result with an empty content block.
+
+7. **`MCPXcodeContext` unknown fields** — `init(from:)` reads only `workspaceState`,
+   `swiftUIPreviews`, and `testLogs` by explicit key lookup; all other keys in the JSON object
+   are ignored. Never throw `DecodingError.keyNotFound` for unknown fields.
+
+8. **Large context payloads** — each `MCPXcodeContext` field that maps to a `SystemContentBlock`
+   is truncated to 8,000 characters before append. Log `[WARN] Context field truncated:
+   <fieldName>` when truncation occurs.
+
+9. **Concurrent sessions** — `MCPSessionRegistry` is an actor; concurrent registrations from
+   multiple Xcode windows are serialized automatically. Each session has its own `UUID` and
+   isolated `AsyncStream` continuation.
+
+10. **Keep-alive on MCP SSE** — same 15 s interval as the legacy OpenAI proxy. Uses the comment
+    form (`: keep-alive\n\n`) which is valid in both unnamed SSE (legacy) and named-event SSE
+    (MCP). No code change to the comment format is needed.
+
+---
+
+### Implementation Checklist
+
+#### Step 8.1 — MCPTypes.swift
+
+- [ ] **8.1.1** Create `Mantle/MCP/MCPTypes.swift` and add a new `MCP` group in Xcode.
+- [ ] **8.1.2** Implement `JSONRPCId` with custom `Codable`. Write unit tests:
+  `1` decodes as `.number(1)`, `"abc"` as `.string("abc")`, `null` as `.null`,
+  and each round-trips back to JSON correctly.
+- [ ] **8.1.3** Implement all request/response/notification/params/result structs listed above.
+- [ ] **8.1.4** Implement `MCPXcodeContext.init(from:)` using explicit key lookups so unknown
+  fields are silently discarded.
+
+#### Step 8.2 — MCPSession + MCPSessionRegistry
+
+- [ ] **8.2.1** Create `Mantle/MCP/MCPSession.swift` — actor with `Lifecycle` state machine.
+  `send<T: Encodable>(_:)` frames as `"event: message\ndata: <json>\n\n"`.
+  `sendEndpointEvent(port:)` frames as `"event: endpoint\ndata: /mcp/message?sessionId=<id>\n\n"`.
+- [ ] **8.2.2** Create `Mantle/MCP/MCPSessionRegistry.swift` — actor singleton.
+- [ ] **8.2.3** Unit test `MCPSession`: attach a mock continuation, call `send(someEncodable)`,
+  assert the yielded string starts with `"event: message\ndata: "` and parses as valid JSON.
+
+#### Step 8.3 — MCPStreamAdapter
+
+- [ ] **8.3.1** Create `Mantle/MCP/MCPStreamAdapter.swift`. Reuse `BedrockService.stream(input:)`
+  (Phase 3) — no duplication of Bedrock client logic.
+- [ ] **8.3.2** If `progressToken != nil`: emit `notifications/progress` per `contentBlockDelta`
+  token; final `tools/call` result carries empty text.
+  If `progressToken == nil`: accumulate all tokens; final `tools/call` result carries full text.
+- [ ] **8.3.3** Unit test with a canned `AsyncThrowingStream` (same pattern as Phase 6.3):
+  assert `notifications/progress` events are sent for each `contentBlockDelta`, and the final
+  `tools/call` result is sent on `messageStop` with correct usage counts.
+
+#### Step 8.4 — MCPRouter + MCPHandler
+
+- [ ] **8.4.1** Create `Mantle/MCP/MCPRouter.swift`. Implement lifecycle state machine and
+  dispatch table per the rules above.
+- [ ] **8.4.2** Create `Mantle/MCP/MCPHandler.swift`. In `toolsCall`: extract context, truncate
+  to 8,000 chars, prepend as `SystemContentBlock`s. Reuse `OpenAIToBedrockMapper.map(_:)`.
+- [ ] **8.4.3** Unit test router lifecycle:
+  - `tools/list` before `initialize` → `serverNotInitialized` error sent to session
+  - `initialize` + `initialized` notification → `markReady()` called; subsequent `tools/list` succeeds
+- [ ] **8.4.4** Unit test handler: `tools/call` with `testLogs` context → Bedrock input contains
+  a system block prefixed with `"Test logs:\n"`.
+
+#### Step 8.5 — ProxyServer route wiring
+
+- [ ] **8.5.1** Update `Server/ProxyServer.swift`: register `GET /mcp/sse` and
+  `POST /mcp/message` routes.
+- [ ] **8.5.2** Implement `mcpSSEHandler`: create session, attach continuation, send endpoint
+  event, start 15 s keep-alive task, return streaming SSE response, clean up registry on finish.
+- [ ] **8.5.3** Implement `mcpMessageHandler`: validate `sessionId`, look up session, dispatch
+  to `MCPRouter` fire-and-forget, return 202.
+- [ ] **8.5.4** Add `mcpEnabled` guard to both MCP routes: return 200 + disabled JSON-RPC error
+  body when `settings.mcpEnabled == false`.
+
+#### Step 8.6 — SettingsStore + UI
+
+- [ ] **8.6.1** Add `@AppStorage("mcpEnabled") var mcpEnabled: Bool = false` to `SettingsStore`.
+- [ ] **8.6.2** Add "Mode" tab to `SettingsView` per the spec above.
+- [ ] **8.6.3** Update `LogConsoleView` entry rendering: detect `[MCP]`-prefixed entries,
+  pretty-print embedded JSON, apply cyan tint, cap at 2,000 chars.
+- [ ] **8.6.4** Verify `SettingsView` preview still compiles after the tab addition.
+
+#### Step 8.7 — Integration & Verification
+
+- [ ] **8.7.1** Curl smoke test — SSE connect:
+  ```bash
+  curl -N http://127.0.0.1:8080/mcp/sse
+  # Expected: first two lines are "event: endpoint" and "data: /mcp/message?sessionId=..."
+  ```
+- [ ] **8.7.2** Curl smoke test — `initialize` handshake:
+  ```bash
+  # In terminal 1 (background): capture the SSE stream and extract sessionId
+  # In terminal 2: POST initialize; watch terminal 1 for the "event: message" response
+  curl -X POST "http://127.0.0.1:8080/mcp/message?sessionId=<uuid>" \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize",
+         "params":{"protocolVersion":"2024-11-05","capabilities":{},
+                   "clientInfo":{"name":"test","version":"1"}}}'
+  # Expect 202 from POST; SSE stream yields event:message with id:1 result
+  ```
+- [ ] **8.7.3** Curl smoke test — `tools/call` with progress streaming:
+  After `initialize` + `initialized`, send `tools/call` with `progressToken: 99` and a user
+  message; assert multiple `notifications/progress` events appear on the SSE stream before the
+  final result with `id: 3`.
+- [ ] **8.7.4** Toggle MCP off in Settings; repeat 8.7.1; assert response body is the disabled
+  error JSON, not an SSE stream.
+- [ ] **8.7.5** End-to-end: configure Xcode 27 Intelligence settings to use Mantle as an MCP
+  provider. Invoke the AI coding assistant in a Swift file. Confirm tokens stream in Xcode and
+  Mantle's log console shows cyan-tinted `[MCP]` entries.
+
+---
+
+### Updated "Files Created by Phase" Table
+
+| File | Phase |
+|---|---|
+| `Mantle/MCP/MCPTypes.swift` | 8 |
+| `Mantle/MCP/MCPSession.swift` | 8 |
+| `Mantle/MCP/MCPSessionRegistry.swift` | 8 |
+| `Mantle/MCP/MCPRouter.swift` | 8 |
+| `Mantle/MCP/MCPHandler.swift` | 8 |
+| `Mantle/MCP/MCPStreamAdapter.swift` | 8 |
+| `Mantle/Store/SettingsStore.swift` | 1 → updated in 8 |
+| `Mantle/Server/ProxyServer.swift` | 4 → updated in 8 |
+| `Mantle/Views/SettingsView.swift` | 1 → updated in 8 |
+| `Mantle/Views/LogConsoleView.swift` | 1 → updated in 8 |
