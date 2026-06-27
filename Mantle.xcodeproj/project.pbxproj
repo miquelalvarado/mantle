@@ -15,6 +15,12 @@
 		B1000001000000000000001B /* LogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002000000000000001B /* LogStore.swift */; };
 		B1000001000000000000001C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002000000000000001C /* SettingsView.swift */; };
 		B1000001000000000000001D /* LogConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002000000000000001D /* LogConsoleView.swift */; };
+		B2000001000000000000001A /* OpenAITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002000000000000001A /* OpenAITypes.swift */; };
+		B2000001000000000000001B /* HardcodedModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002000000000000001B /* HardcodedModels.swift */; };
+		B2000001000000000000001C /* OpenAIToBedrockMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002000000000000001C /* OpenAIToBedrockMapper.swift */; };
+		T1000001000000000000001A /* MapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T1000002000000000000001A /* MapperTests.swift */; };
+		T1000001000000000000001B /* Mantle.app in Frameworks */ = {isa = PBXBuildFile; fileRef = F4F3C00414F6420CCC99E939 /* Mantle.app */; };
+		T2000001000000000000001A /* AWSBedrockRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = T2000002000000000000001A /* AWSBedrockRuntime */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,8 +31,13 @@
 		B1000002000000000000001B /* LogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogStore.swift; sourceTree = "<group>"; };
 		B1000002000000000000001C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B1000002000000000000001D /* LogConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogConsoleView.swift; sourceTree = "<group>"; };
+		B2000002000000000000001A /* OpenAITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAITypes.swift; sourceTree = "<group>"; };
+		B2000002000000000000001B /* HardcodedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardcodedModels.swift; sourceTree = "<group>"; };
+		B2000002000000000000001C /* OpenAIToBedrockMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIToBedrockMapper.swift; sourceTree = "<group>"; };
 		CC4EE736FE1A1FAABB465824 /* MantleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MantleApp.swift; sourceTree = "<group>"; };
 		F4F3C00414F6420CCC99E939 /* Mantle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mantle.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		T1000002000000000000001A /* MapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapperTests.swift; sourceTree = "<group>"; };
+		T3000001000000000000001A /* MantleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MantleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,8 +57,17 @@
 			isa = PBXGroup;
 			children = (
 				F4F3C00414F6420CCC99E939 /* Mantle.app */,
+				T3000001000000000000001A /* MantleTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		T4000001000000000000001A /* MantleTests */ = {
+			isa = PBXGroup;
+			children = (
+				T1000002000000000000001A /* MapperTests.swift */,
+			);
+			path = MantleTests;
 			sourceTree = "<group>";
 		};
 		39FAA31D007BE4E9D7DC8B49 /* App */ = {
@@ -75,6 +95,9 @@
 		AA000001000000000000001C /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				B2000002000000000000001A /* OpenAITypes.swift */,
+				B2000002000000000000001B /* HardcodedModels.swift */,
+				B2000002000000000000001C /* OpenAIToBedrockMapper.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -117,11 +140,30 @@
 			isa = PBXGroup;
 			children = (
 				E73AB2C49A02EA6C496744CB /* Mantle */,
+				T4000001000000000000001A /* MantleTests */,
 				1A25B01255622A65F4E1390D /* Products */,
 			);
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
+
+/* Begin PBXContainerItemProxy section */
+		T5000001000000000000001A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 634EE18D1C1C91FDB8047602 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9CF2EDCCC98B112C08F5DC74;
+			remoteInfo = Mantle;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		T5000001000000000000001B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9CF2EDCCC98B112C08F5DC74 /* Mantle */;
+			targetProxy = T5000001000000000000001A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXNativeTarget section */
 		9CF2EDCCC98B112C08F5DC74 /* Mantle */ = {
@@ -145,6 +187,26 @@
 			productReference = F4F3C00414F6420CCC99E939 /* Mantle.app */;
 			productType = "com.apple.product-type.application";
 		};
+		T6000001000000000000001A /* MantleTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = T7000001000000000000001A /* Build configuration list for PBXNativeTarget "MantleTests" */;
+			buildPhases = (
+				T8000001000000000000001A /* Sources */,
+				T8000001000000000000001B /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				T5000001000000000000001B /* PBXTargetDependency */,
+			);
+			name = MantleTests;
+			packageProductDependencies = (
+				T2000002000000000000001A /* AWSBedrockRuntime */,
+			);
+			productName = MantleTests;
+			productReference = T3000001000000000000001A /* MantleTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -157,6 +219,10 @@
 				TargetAttributes = {
 					9CF2EDCCC98B112C08F5DC74 = {
 						CreatedOnToolsVersion = 15.4;
+					};
+					T6000001000000000000001A = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = 9CF2EDCCC98B112C08F5DC74;
 					};
 				};
 			};
@@ -178,9 +244,32 @@
 			projectRoot = "";
 			targets = (
 				9CF2EDCCC98B112C08F5DC74 /* Mantle */,
+				T6000001000000000000001A /* MantleTests */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase (test) section */
+		T8000001000000000000001A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				T1000001000000000000001A /* MapperTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase (test) section */
+
+/* Begin PBXFrameworksBuildPhase (test) section */
+		T8000001000000000000001B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				T2000001000000000000001A /* AWSBedrockRuntime in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase (test) section */
 
 /* Begin PBXResourcesBuildPhase section */
 		D01D2CD47140A6440C37E402 /* Resources */ = {
@@ -203,6 +292,9 @@
 				B1000001000000000000001B /* LogStore.swift in Sources */,
 				B1000001000000000000001C /* SettingsView.swift in Sources */,
 				B1000001000000000000001D /* LogConsoleView.swift in Sources */,
+				B2000001000000000000001A /* OpenAITypes.swift in Sources */,
+				B2000001000000000000001B /* HardcodedModels.swift in Sources */,
+				B2000001000000000000001C /* OpenAIToBedrockMapper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -381,6 +473,38 @@
 			};
 			name = Release;
 		};
+		T9000001000000000000001A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.miquel.MantleTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mantle.app/Contents/MacOS/Mantle";
+			};
+			name = Debug;
+		};
+		T9000001000000000000001B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.miquel.MantleTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mantle.app/Contents/MacOS/Mantle";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -398,6 +522,15 @@
 			buildConfigurations = (
 				89707296024211DBAFE218BA /* Debug */,
 				23E209461C76B477689C2004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		T7000001000000000000001A /* Build configuration list for PBXNativeTarget "MantleTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				T9000001000000000000001A /* Debug */,
+				T9000001000000000000001B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -430,6 +563,11 @@
 			productName = Hummingbird;
 		};
 		C9C37AB1D105D86892584588 /* AWSBedrockRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2975C09F6ADA2F7DFB5B3C7D /* XCRemoteSwiftPackageReference "aws-sdk-swift" */;
+			productName = AWSBedrockRuntime;
+		};
+		T2000002000000000000001A /* AWSBedrockRuntime */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 2975C09F6ADA2F7DFB5B3C7D /* XCRemoteSwiftPackageReference "aws-sdk-swift" */;
 			productName = AWSBedrockRuntime;
