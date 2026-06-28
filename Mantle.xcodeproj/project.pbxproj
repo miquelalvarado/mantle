@@ -20,6 +20,10 @@
 		B2000001000000000000001C /* OpenAIToBedrockMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002000000000000001C /* OpenAIToBedrockMapper.swift */; };
 		B3000001000000000000001A /* BedrockService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3000002000000000000001A /* BedrockService.swift */; };
 		B3000001000000000000001B /* StreamMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3000002000000000000001B /* StreamMapper.swift */; };
+		B4000001000000000000001A /* ModelsHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000002000000000000001A /* ModelsHandler.swift */; };
+		B4000001000000000000001B /* ChatHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000002000000000000001B /* ChatHandler.swift */; };
+		B4000001000000000000001C /* ProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000002000000000000001C /* ProxyServer.swift */; };
+		B4000001000000000000001D /* ServerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000002000000000000001D /* ServerManager.swift */; };
 		T1000001000000000000001A /* MapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T1000002000000000000001A /* MapperTests.swift */; };
 		T1000001000000000000001B /* Mantle.app in Frameworks */ = {isa = PBXBuildFile; fileRef = F4F3C00414F6420CCC99E939 /* Mantle.app */; };
 		T2000001000000000000001A /* AWSBedrockRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = T2000002000000000000001A /* AWSBedrockRuntime */; };
@@ -38,6 +42,10 @@
 		B2000002000000000000001C /* OpenAIToBedrockMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIToBedrockMapper.swift; sourceTree = "<group>"; };
 		B3000002000000000000001A /* BedrockService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BedrockService.swift; sourceTree = "<group>"; };
 		B3000002000000000000001B /* StreamMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamMapper.swift; sourceTree = "<group>"; };
+		B4000002000000000000001A /* ModelsHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsHandler.swift; sourceTree = "<group>"; };
+		B4000002000000000000001B /* ChatHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHandler.swift; sourceTree = "<group>"; };
+		B4000002000000000000001C /* ProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyServer.swift; sourceTree = "<group>"; };
+		B4000002000000000000001D /* ServerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerManager.swift; sourceTree = "<group>"; };
 		CC4EE736FE1A1FAABB465824 /* MantleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MantleApp.swift; sourceTree = "<group>"; };
 		F4F3C00414F6420CCC99E939 /* Mantle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mantle.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		T1000002000000000000001A /* MapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapperTests.swift; sourceTree = "<group>"; };
@@ -85,6 +93,10 @@
 		AA000001000000000000001A /* Server */ = {
 			isa = PBXGroup;
 			children = (
+				B4000002000000000000001A /* ModelsHandler.swift */,
+				B4000002000000000000001B /* ChatHandler.swift */,
+				B4000002000000000000001C /* ProxyServer.swift */,
+				B4000002000000000000001D /* ServerManager.swift */,
 			);
 			path = Server;
 			sourceTree = "<group>";
@@ -303,6 +315,10 @@
 				B2000001000000000000001C /* OpenAIToBedrockMapper.swift in Sources */,
 				B3000001000000000000001A /* BedrockService.swift in Sources */,
 				B3000001000000000000001B /* StreamMapper.swift in Sources */,
+				B4000001000000000000001A /* ModelsHandler.swift in Sources */,
+				B4000001000000000000001B /* ChatHandler.swift in Sources */,
+				B4000001000000000000001C /* ProxyServer.swift in Sources */,
+				B4000001000000000000001D /* ServerManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
