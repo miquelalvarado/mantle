@@ -117,14 +117,15 @@ The IAM identity (user or role) needs the following minimum permissions:
 
 ### 2. Enable a Bedrock model
 
-AWS Bedrock models require explicit activation before use. This is a one-time step per model per region:
+Serverless foundation models are now **automatically enabled** when first invoked — you no longer need to manually activate them through the Model access page.
 
-1. Open the [AWS Console](https://console.aws.amazon.com/bedrock) and navigate to **Bedrock → Model access**.
+The one exception is **Anthropic models** (Claude): first-time users in an account may need to submit brief use-case details before the first successful call. If you hit an `AccessDeniedException` on your first request:
+
+1. Open the [AWS Console](https://console.aws.amazon.com/bedrock) and navigate to **Bedrock → Model catalog**.
 2. Select the region you intend to use (top-right dropdown).
-3. Click **Manage model access**, find the model you want (e.g. *Claude 3.5 Sonnet v2*), and request access.
-4. Access is usually granted instantly for Anthropic and Amazon models.
+3. Find the Claude model you want, open it, and follow any one-time approval prompt.
 
-If you skip this step you will see a `ValidationException` or `AccessDeniedException` in Mantle's log console when the first request arrives.
+Amazon Nova models and most others invoke without any approval step. If you see a `ValidationException` or `AccessDeniedException` in Mantle's log console on the first request, this is the most likely cause.
 
 ### 3. Configure Mantle
 
@@ -132,7 +133,7 @@ Open Mantle's Settings with `Cmd+,` or via the menu bar → **Settings…**. The
 
 | Field | What to put here | Where to find it |
 |---|---|---|
-| **AWS Region** | The region where your Bedrock model is enabled | AWS Console top-right dropdown. Common choices: `us-east-1`, `us-west-2`, `eu-west-1` |
+| **AWS Region** | The AWS region to send Bedrock requests to | Common choices: `us-east-1`, `us-west-2`, `eu-west-1`. Pick the region closest to you, or one where your Bedrock quota is highest |
 | **AWS Profile** | The profile name from `~/.aws/credentials` | Open `~/.aws/credentials` in a text editor — the name inside `[brackets]`. Use `default` if you only have one profile |
 | **Default Model ID** | The Bedrock model ID to route all requests to | See [Supported models](#supported-models) below, or copy from the Bedrock console |
 | **Local Port** | The port Mantle listens on | `8080` is fine unless something else is already using it. Run `lsof -i :8080` to check |
