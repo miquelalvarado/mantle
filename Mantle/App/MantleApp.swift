@@ -6,10 +6,16 @@ struct MantleApp: App {
     @StateObject private var serverMgr = ServerManager()
 
     var body: some Scene {
-        MenuBarExtra("Mantle", systemImage: serverMgr.iconName) {
+        MenuBarExtra {
             MenuBarView()
                 .environmentObject(settings)
                 .environmentObject(serverMgr)
+        } label: {
+            if NSImage(named: "MenuBarIcon") != nil {
+                Image("MenuBarIcon")
+            } else {
+                Image(systemName: serverMgr.iconName)
+            }
         }
         Settings {
             SettingsView()

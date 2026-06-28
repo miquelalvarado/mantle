@@ -78,7 +78,15 @@ struct ChatHandler {
             .connection: "keep-alive"
         ]
 
-        let sseSequence = mapper.makeSSESequence(bedrockEvents: bedrockStream)
+        let sseSequence = mapper.makeSSESequence(bedrockEvents: bedrockStream) { prompt, completion in
+            Task {
+                await LogStore.shared.append(LogEntry(
+                    date: Date(),
+                    level: .info,
+                    text: "tokens prompt=\(prompt) completion=\(completion)"
+                ))
+            }
+        }
         return Response(
             status: .ok,
             headers: sseHeaders,

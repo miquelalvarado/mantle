@@ -1228,3 +1228,450 @@ Xcode 27                                    Mantle
 | `Mantle/Server/ProxyServer.swift` | 4 → updated in 8 |
 | `Mantle/Views/SettingsView.swift` | 1 → updated in 8 |
 | `Mantle/Views/LogConsoleView.swift` | 1 → updated in 8 |
+
+---
+
+## Phase 9 — Dynamic Model List
+
+### Overview
+
+Replace the hardcoded six-entry `HardcodedModels.all` with a live list fetched from
+`bedrock:ListFoundationModels` at server start and whenever the region or profile changes.
+Fall back to the hardcoded list if the API call fails. Cache the result in memory — no
+disk persistence needed.
+
+### New / Changed Files
+
+- `Mantle/Bedrock/BedrockService.swift` — add `listModels() async throws -> [OpenAIModel]`
+- `Mantle/Models/HardcodedModels.swift` — demoted to fallback constant
+- `Mantle/Server/ModelsHandler.swift` — query live list instead of hardcoded array
+- `Mantle/Store/ModelStore.swift` — new; actor that caches the fetched list
+
+### Component Specifications
+
+#### ModelStore
+
+```swift
+actor ModelStore {
+    static let shared = ModelStore()
+    private(set) var models: [OpenAIModel] = HardcodedModels.all
+
+    // Called by ServerManager after ensureClient succeeds.
+    // On success replaces models; on error keeps previous value and logs [WARN].
+    func refresh(using bedrock: BedrockService) async
+}
+```
+
+`BedrockService.listModels()` calls `BedrockClient.listFoundationModels()`, filters to
+`outputModalities` containing `.text` and `modelLifecycleStatus == .active`, maps each
+result to `OpenAIModel(id: modelId, object: "model", ownedBy: providerName)`.
+
+`ModelsHandler` reads `await ModelStore.shared.models` instead of `HardcodedModels.all`.
+
+### Implementation Checklist
+
+- [ ] **9.1** Add `listModels() async throws -> [OpenAIModel]` to `BedrockService`.
+- [ ] **9.2** Create `Store/ModelStore.swift` with `refresh(using:)` and fallback logic.
+- [ ] **9.3** Call `ModelStore.shared.refresh(using: bedrock)` in `ServerManager.toggle()`
+  after the server starts successfully.
+- [ ] **9.4** Update `ModelsHandler` to read from `ModelStore.shared.models`.
+- [ ] **9.5** Unit test: mock `listModels()` returning two models → `ModelStore.models`
+  contains those two. Mock throwing → `ModelStore.models` retains fallback list.
+- [ ] **9.6** Log `[INFO] Loaded N models from Bedrock` on success; `[WARN] Model list
+  fetch failed: <error> — using fallback` on error.
+
+**Verify**: Start server, curl `/v1/models` → list reflects your account's active models.
+Stop Wi-Fi, restart → falls back to hardcoded list without crashing.
+
+---
+
+## Phase 10 — Auto-Start on Login
+
+### Overview
+
+Add a toggle in Settings → General that registers Mantle as a Login Item via
+`SMAppService.mainApp`, so the server is always available after a reboot without manual
+intervention.
+
+### New / Changed Files
+
+- `Mantle/Views/SettingsView.swift` — add Toggle in General tab
+- `Mantle/Store/SettingsStore.swift` — no new stored key needed (`SMAppService` persists
+  its own state; read back with `SMAppService.mainApp.status`)
+
+### Implementation Checklist
+
+- [ ] **10.1** Add `import ServiceManagement` to `SettingsView.swift`.
+- [ ] **10.2** In `GeneralTab`, add:
+  ```swift
+  Toggle("Launch at Login", isOn: launchAtLogin)
+  ```
+  where `launchAtLogin` is a `Binding<Bool>` computed from
+  `SMAppService.mainApp.status == .enabled` (get) and
+  `try? SMAppService.mainApp.register()` / `.unregister()` (set).
+- [ ] **10.3** Handle the case where `status == .requiresApproval` — show an informational
+  `Text("Approval required in System Settings → General → Login Items")` beneath the toggle.
+- [ ] **10.4** Manual verify: toggle on → quit and relogin → Mantle appears in menu bar.
+  Toggle off → relogin → Mantle does not auto-start.
+
+---
+
+## Phase 11 — Tool / Function Calling
+
+### Overview
+
+Map OpenAI `tools` / `tool_choice` to Bedrock's `toolConfig` parameter, enabling
+agents and function-calling workflows. Remove the blanket `501 Not Implemented` guard
+in `ChatHandler`.
+
+### New / Changed Files
+
+- `Mantle/Models/OpenAITypes.swift` — add `OpenAITool`, `OpenAIToolFunction`,
+  `OpenAIToolChoice`, `OpenAIToolCall`, `OpenAIToolResultMessage`
+- `Mantle/Models/OpenAIToBedrockMapper.swift` — add `mapTools(_:)` and
+  `mapToolResult(_:)` static methods; update `map(_:)` to handle `role:"tool"` messages
+- `Mantle/Bedrock/StreamMapper.swift` — handle `.contentBlockDelta` + `.toolUse(…)` events;
+  emit `delta.tool_calls` SSE chunks in OpenAI format
+- `Mantle/Server/ChatHandler.swift` — remove `tools != nil` guard; pass `toolConfig` to
+  `ConverseStreamInput`
+
+### Wire Format Notes
+
+OpenAI tool-call delta chunks use:
+```json
+{"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function",
+  "function":{"name":"get_weather","arguments":"{\"loc"}}]}}
+```
+Bedrock emits tool use via `.contentBlockStart` (with `toolUse.toolUseId` and `name`)
+followed by `.contentBlockDelta` events carrying partial JSON input, then
+`.contentBlockStop`.
+
+Tool results arrive in the next request as `role:"tool"` messages with `tool_call_id`.
+Map these to Bedrock `role:.user` messages containing a `ToolResultBlock`.
+
+### Implementation Checklist
+
+- [ ] **11.1** Extend `OpenAITypes.swift` with tool-related types.
+- [ ] **11.2** Add `OpenAIToBedrockMapper.mapTools(_: [OpenAITool]) -> ToolConfigBlock`
+  and update `map(_:)` to convert `role:"tool"` → Bedrock `ToolResultBlock`.
+- [ ] **11.3** Update `StreamMapper` to accumulate tool-use block deltas and emit
+  `delta.tool_calls` chunks; emit `finish_reason: "tool_calls"` on `messageStop` when
+  stop reason is `tool_use`.
+- [ ] **11.4** Update `ChatHandler`: remove 501 guard; build `ConverseStreamInput` with
+  `toolConfig` when `chatRequest.tools` is non-nil.
+- [ ] **11.5** Unit test: mapper converts one `OpenAITool` → correct `ToolConfigBlock`;
+  `role:"tool"` message → `ToolResultBlock` in the Bedrock messages array.
+- [ ] **11.6** Integration test with a model that supports tool use (e.g.
+  `anthropic.claude-3-5-sonnet-20241022-v2:0`): send a request with one tool definition;
+  assert the SSE stream contains `delta.tool_calls` chunks and `finish_reason:"tool_calls"`.
+
+---
+
+## Phase 12 — Per-Request Model Override
+
+### Overview
+
+Honour the `model` field in the incoming OpenAI request when it matches a known Bedrock
+model ID, while keeping the Settings default as fallback for unknown or empty values.
+Adds zero new UI; the logic lives entirely in `ChatHandler`.
+
+### Changed Files
+
+- `Mantle/Server/ChatHandler.swift` — resolve effective model before building `ConverseStreamInput`
+
+### Logic
+
+```swift
+let effectiveModel: String = {
+    let requested = chatRequest.model
+    let known = await ModelStore.shared.models.map(\.id)
+    if known.contains(requested) { return requested }
+    return defaultModel   // from SettingsStore
+}()
+```
+
+Log `[INFO] model override: \(requested)` when the incoming model is used, or
+`[INFO] model fallback → \(defaultModel)` when it is not recognised.
+
+### Implementation Checklist
+
+- [ ] **12.1** Update `ChatHandler.handle` to resolve `effectiveModel` as above.
+- [ ] **12.2** Pass `effectiveModel` to `ConverseStreamInput` and `StreamMapper`.
+- [ ] **12.3** Unit test: request with a known model ID → `effectiveModel` equals that ID.
+  Request with `"gpt-4"` → `effectiveModel` equals the Settings default.
+
+---
+
+## Phase 13 — Usage Dashboard
+
+### Overview
+
+Add a **Usage** tab to Settings that shows per-session token totals and a projected cost
+estimate, using hardcoded Bedrock on-demand pricing for the models Mantle supports.
+
+### New / Changed Files
+
+- `Mantle/Store/UsageStore.swift` — new; actor accumulating `UsageRecord` entries
+- `Mantle/Views/UsageView.swift` — new; table + summary row
+- `Mantle/Views/SettingsView.swift` — add Usage tab
+- `Mantle/Server/ChatHandler.swift` — pass usage to `UsageStore` via the `onUsage` callback
+
+### Component Specifications
+
+#### UsageStore
+
+```swift
+struct UsageRecord: Identifiable, Sendable {
+    let id        = UUID()
+    let date      : Date
+    let modelId   : String
+    let prompt    : Int
+    let completion: Int
+}
+
+actor UsageStore {
+    static let shared = UsageStore()
+    private(set) var records: [UsageRecord] = []   // unbounded within session; cleared on quit
+
+    func append(_ record: UsageRecord)
+    func clear()
+
+    // Returns (promptTotal, completionTotal, estimatedUSDCents) for current session
+    func sessionSummary() -> (Int, Int, Double)
+}
+```
+
+Pricing table (hardcoded, per 1 000 tokens, USD):
+
+| Model | Input | Output |
+|---|---|---|
+| `claude-3-5-sonnet-20241022-v2:0` | $0.003 | $0.015 |
+| `claude-3-5-haiku-20241022-v1:0` | $0.0008 | $0.004 |
+| `claude-3-haiku-20240307-v1:0` | $0.00025 | $0.00125 |
+| `claude-3-opus-20240229-v1:0` | $0.015 | $0.075 |
+| `nova-pro-v1:0` | $0.0008 | $0.0032 |
+| `nova-lite-v1:0` | $0.00006 | $0.00024 |
+
+#### UsageView
+
+```
+Tab label: "Usage"  (system image: "chart.bar")
+  Summary row: "Session total: N prompt + M completion tokens  ≈ $X.XX"
+  Table: Date | Model | Prompt | Completion | Est. Cost
+  "Clear" button (bottom trailing)
+```
+
+### Implementation Checklist
+
+- [ ] **13.1** Create `Store/UsageStore.swift` with pricing table and `sessionSummary()`.
+- [ ] **13.2** Create `Views/UsageView.swift` with summary row and `List` of records.
+- [ ] **13.3** Add Usage tab to `SettingsView`.
+- [ ] **13.4** In `ChatHandler`, extend the `onUsage` callback to also call
+  `UsageStore.shared.append(UsageRecord(date:modelId:prompt:completion:))`.
+- [ ] **13.5** Unit test: append three records, call `sessionSummary()`, assert totals and
+  estimated cost match expected values.
+
+---
+
+## Phase 14 — Non-Streaming Fallback
+
+### Overview
+
+Handle requests where `stream` is `false` (or absent) by accumulating the full Bedrock
+stream internally and returning a single JSON response in the `chat.completion` (non-chunk)
+format. This extends compatibility to any OpenAI client that does not support SSE.
+
+### Changed Files
+
+- `Mantle/Server/ChatHandler.swift` — branch on `chatRequest.stream`
+- `Mantle/Bedrock/ResponseCollector.swift` — new; accumulates stream into a single response
+
+### Component Specification
+
+#### ResponseCollector
+
+```swift
+struct ResponseCollector {
+    let completionId : String
+    let created      : Int
+    let modelId      : String
+
+    // Drains the Bedrock event stream, returns a complete OpenAIChatResponse.
+    func collect(
+        bedrockEvents: some AsyncSequence<ConverseStreamOutput, Error>
+    ) async throws -> OpenAIChatResponse
+}
+```
+
+`OpenAIChatResponse` is the non-streaming counterpart to `OpenAIChunk`:
+```swift
+struct OpenAIChatResponse: Codable, Sendable {
+    let id      : String
+    let object  : String   // "chat.completion"
+    let created : Int
+    let model   : String
+    let choices : [OpenAIChatChoice]
+    let usage   : OpenAIUsage
+}
+struct OpenAIChatChoice: Codable, Sendable {
+    let index         : Int
+    let message       : OpenAIDelta   // role + content fully populated
+    let finishReason  : String
+}
+```
+
+### Implementation Checklist
+
+- [ ] **14.1** Add `OpenAIChatResponse` and `OpenAIChatChoice` to `OpenAITypes.swift`.
+- [ ] **14.2** Create `Bedrock/ResponseCollector.swift`.
+- [ ] **14.3** In `ChatHandler.handle`, check `chatRequest.stream == false`:
+  - If non-streaming: use `ResponseCollector`, return `application/json` response.
+  - If streaming (default): existing `StreamMapper` path unchanged.
+- [ ] **14.4** Unit test: canned Bedrock events → `ResponseCollector` returns correct
+  `OpenAIChatResponse` with concatenated content, finish reason, and usage.
+- [ ] **14.5** Curl verify:
+  ```bash
+  curl -X POST http://127.0.0.1:8080/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{"model":"any","messages":[{"role":"user","content":"hi"}],"stream":false}'
+  # Expected: single JSON object, not SSE
+  ```
+
+---
+
+## Phase 15 — Cross-Machine Forwarding
+
+### Overview
+
+Add an option to bind on `0.0.0.0` instead of `127.0.0.1`, with optional bearer-token
+authentication, so Mantle can serve other devices on a local network (CI machines, a
+second Mac, etc.).
+
+### Changed Files
+
+- `Mantle/Store/SettingsStore.swift` — add `bindAllInterfaces: Bool`, `bearerToken: String`
+- `Mantle/Views/SettingsView.swift` — add Network section to General tab
+- `Mantle/Server/ProxyServer.swift` — use bind address from settings; add auth middleware
+- `Mantle/Server/AuthMiddleware.swift` — new; Hummingbird middleware for bearer validation
+
+### Component Specification
+
+#### SettingsStore additions
+
+```swift
+@AppStorage("bindAllInterfaces") var bindAllInterfaces: Bool   = false
+@AppStorage("bearerToken")       var bearerToken:       String = ""
+```
+
+#### AuthMiddleware
+
+```swift
+struct AuthMiddleware<Context: RequestContext>: RouterMiddleware {
+    let token: String   // empty string = disabled
+
+    func handle(_ request: Request, context: Context,
+                next: (Request, Context) async throws -> Response) async throws -> Response
+}
+```
+
+If `token` is non-empty, check `Authorization: Bearer <token>` header. Return
+`Response(status: .unauthorized)` on mismatch.
+
+#### SettingsView — Network section (inside GeneralTab)
+
+```
+Section("Network") {
+  Toggle("Accept connections from other devices", isOn: $settings.bindAllInterfaces)
+  if settings.bindAllInterfaces {
+    TextField("Bearer Token (optional)", text: $settings.bearerToken)
+      .help("Leave blank to allow unauthenticated access from your local network")
+  }
+}
+```
+
+Display an informational label showing the LAN IP when `bindAllInterfaces` is true:
+```swift
+Text("Listening on \(lanIPAddress()):\(settings.port)")
+    .foregroundColor(.secondary)
+```
+
+### Implementation Checklist
+
+- [ ] **15.1** Add `bindAllInterfaces` and `bearerToken` to `SettingsStore`.
+- [ ] **15.2** Create `Server/AuthMiddleware.swift`.
+- [ ] **15.3** Update `ProxyServer.start()`: bind to `"0.0.0.0"` when `bindAllInterfaces`
+  is true, `"127.0.0.1"` otherwise. Apply `AuthMiddleware` to the router when
+  `bearerToken` is non-empty.
+- [ ] **15.4** Add Network section to `SettingsView` with toggle, optional token field,
+  and LAN IP label.
+- [ ] **15.5** Add `[WARN] Server bound on 0.0.0.0 — reachable from local network` to
+  the log when wide binding is active.
+- [ ] **15.6** Unit test: `AuthMiddleware` with token `"abc"` → request with correct
+  header passes; request with wrong header or no header returns 401.
+
+---
+
+## Phase 16 — Binary Distribution
+
+### Overview
+
+Package Mantle as a signed, notarised, auto-updating `.dmg` so users can install it without
+Xcode. Covers code signing configuration, notarisation via `notarytool`, and a
+`Sparkle`-based auto-update feed.
+
+### New / Changed Files
+
+- `Mantle.xcodeproj` — hardened runtime entitlements, correct provisioning
+- `Mantle/Mantle.entitlements` — add `com.apple.security.cs.allow-jit` if needed by Sparkle
+- `Scripts/build-dmg.sh` — new; creates a drag-install `.dmg` with background image
+- `Scripts/notarise.sh` — new; submits to Apple notary service and staples
+- `appcast.xml` — new (in a separate distribution repo or GitHub Release); Sparkle feed
+- `Mantle/App/MantleApp.swift` — initialise `SPUStandardUpdaterController`
+
+### Implementation Checklist
+
+- [ ] **16.1** In Xcode, enable **Hardened Runtime** and ensure entitlements include
+  `com.apple.security.network.client` and `com.apple.security.network.server`.
+- [ ] **16.2** Add the `Sparkle` SPM package (`https://github.com/sparkle-project/Sparkle`
+  — up to next major from `2.0.0`). Add product `Sparkle`.
+- [ ] **16.3** In `MantleApp.swift`, add:
+  ```swift
+  import Sparkle
+  private let updaterController = SPUStandardUpdaterController(
+      startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+  ```
+  Add a **Check for Updates…** menu item in `MenuBarView` that calls
+  `updaterController.updater.checkForUpdates()`.
+- [ ] **16.4** Write `Scripts/build-dmg.sh`: archive with `xcodebuild archive`, export
+  with `exportArchive`, produce a drag-install `.dmg` via `hdiutil`.
+- [ ] **16.5** Write `Scripts/notarise.sh`: submit with `xcrun notarytool submit`,
+  poll until status is `Accepted`, then `xcrun stapler staple`.
+- [ ] **16.6** Publish `appcast.xml` (GitHub Releases is a convenient host). Verify
+  Sparkle finds the update by setting `SUFeedURL` in `Info.plist`.
+- [ ] **16.7** Manual verify: install the `.dmg` on a clean Mac (no Xcode), launch Mantle,
+  confirm server starts and responds to curl. Simulate an update by bumping the version and
+  republishing; confirm Sparkle prompts and installs.
+
+---
+
+## Updated "Files Created / Modified by Phase" Table
+
+| File | Phase |
+|---|---|
+| `Mantle/MCP/MCPTypes.swift` | 8 |
+| `Mantle/MCP/MCPSession.swift` | 8 |
+| `Mantle/MCP/MCPSessionRegistry.swift` | 8 |
+| `Mantle/MCP/MCPRouter.swift` | 8 |
+| `Mantle/MCP/MCPHandler.swift` | 8 |
+| `Mantle/MCP/MCPStreamAdapter.swift` | 8 |
+| `Mantle/Store/SettingsStore.swift` | 1 → 8 → 15 |
+| `Mantle/Server/ProxyServer.swift` | 4 → 8 → 15 |
+| `Mantle/Views/SettingsView.swift` | 1 → 8 → 10 → 13 → 15 |
+| `Mantle/Views/LogConsoleView.swift` | 1 → 8 |
+| `Mantle/Store/ModelStore.swift` | 9 |
+| `Mantle/Store/UsageStore.swift` | 13 |
+| `Mantle/Store/UsageView.swift` | 13 |
+| `Mantle/Bedrock/ResponseCollector.swift` | 14 |
+| `Mantle/Server/AuthMiddleware.swift` | 15 |
+| `Scripts/build-dmg.sh` | 16 |
+| `Scripts/notarise.sh` | 16 |

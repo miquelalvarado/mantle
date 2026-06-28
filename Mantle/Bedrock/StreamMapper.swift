@@ -9,7 +9,8 @@ struct StreamMapper {
 
     func makeSSESequence(
         bedrockEvents: AsyncThrowingStream<BedrockRuntimeClientTypes.ConverseStreamOutput, Error>,
-        keepAliveInterval: Duration = .seconds(15)
+        keepAliveInterval: Duration = .seconds(15),
+        onUsage: (@Sendable (Int, Int) -> Void)? = nil
     ) -> AsyncThrowingStream<ByteBuffer, Error> {
         let mapper = self
         return AsyncThrowingStream { continuation in
@@ -17,6 +18,7 @@ struct StreamMapper {
                 await mapper.run(
                     bedrockEvents: bedrockEvents,
                     keepAliveInterval: keepAliveInterval,
+                    onUsage: onUsage,
                     continuation: continuation
                 )
             }
@@ -26,6 +28,7 @@ struct StreamMapper {
     private func run(
         bedrockEvents: AsyncThrowingStream<BedrockRuntimeClientTypes.ConverseStreamOutput, Error>,
         keepAliveInterval: Duration,
+        onUsage: (@Sendable (Int, Int) -> Void)?,
         continuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation
     ) async {
         // 1. Role-announcement chunk
@@ -112,6 +115,7 @@ struct StreamMapper {
                     )
                     continuation.yield(try sseData(finalChunk))
                     state.lastYield = Date()
+                    onUsage?(promptTokens, completionTokens)
                     var doneBuf = ByteBuffer()
                     doneBuf.writeString("data: [DONE]\n\n")
                     continuation.yield(doneBuf)
