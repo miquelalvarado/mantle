@@ -18,6 +18,8 @@
 		B2000001000000000000001A /* OpenAITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002000000000000001A /* OpenAITypes.swift */; };
 		B2000001000000000000001B /* HardcodedModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002000000000000001B /* HardcodedModels.swift */; };
 		B2000001000000000000001C /* OpenAIToBedrockMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002000000000000001C /* OpenAIToBedrockMapper.swift */; };
+		B3000001000000000000001A /* BedrockService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3000002000000000000001A /* BedrockService.swift */; };
+		B3000001000000000000001B /* StreamMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3000002000000000000001B /* StreamMapper.swift */; };
 		T1000001000000000000001A /* MapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T1000002000000000000001A /* MapperTests.swift */; };
 		T1000001000000000000001B /* Mantle.app in Frameworks */ = {isa = PBXBuildFile; fileRef = F4F3C00414F6420CCC99E939 /* Mantle.app */; };
 		T2000001000000000000001A /* AWSBedrockRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = T2000002000000000000001A /* AWSBedrockRuntime */; };
@@ -34,6 +36,8 @@
 		B2000002000000000000001A /* OpenAITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAITypes.swift; sourceTree = "<group>"; };
 		B2000002000000000000001B /* HardcodedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardcodedModels.swift; sourceTree = "<group>"; };
 		B2000002000000000000001C /* OpenAIToBedrockMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIToBedrockMapper.swift; sourceTree = "<group>"; };
+		B3000002000000000000001A /* BedrockService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BedrockService.swift; sourceTree = "<group>"; };
+		B3000002000000000000001B /* StreamMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamMapper.swift; sourceTree = "<group>"; };
 		CC4EE736FE1A1FAABB465824 /* MantleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MantleApp.swift; sourceTree = "<group>"; };
 		F4F3C00414F6420CCC99E939 /* Mantle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mantle.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		T1000002000000000000001A /* MapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapperTests.swift; sourceTree = "<group>"; };
@@ -88,6 +92,8 @@
 		AA000001000000000000001B /* Bedrock */ = {
 			isa = PBXGroup;
 			children = (
+				B3000002000000000000001A /* BedrockService.swift */,
+				B3000002000000000000001B /* StreamMapper.swift */,
 			);
 			path = Bedrock;
 			sourceTree = "<group>";
@@ -295,6 +301,8 @@
 				B2000001000000000000001A /* OpenAITypes.swift in Sources */,
 				B2000001000000000000001B /* HardcodedModels.swift in Sources */,
 				B2000001000000000000001C /* OpenAIToBedrockMapper.swift in Sources */,
+				B3000001000000000000001A /* BedrockService.swift in Sources */,
+				B3000001000000000000001B /* StreamMapper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
