@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var serverMgr: ServerManager
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -24,8 +25,7 @@ struct MenuBarView: View {
             Divider()
 
             Button("Settings…") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)

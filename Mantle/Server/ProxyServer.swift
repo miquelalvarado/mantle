@@ -39,40 +39,28 @@ actor ProxyServer {
             configuration: .init(address: .hostname("127.0.0.1", port: port))
         )
 
-        let signal = StartupSignal()
+        // Keep a reference to the error channel so we can surface bind failures.
+        let errorBox = ErrorBox()
 
         let task = Task<Void, Error> {
             do {
-                await signal.markStarted()
                 try await app.runService()
             } catch {
                 let mapped = Self.mapBindError(error, port: port)
-                await signal.markFailed(mapped)
+                await errorBox.set(mapped)
                 throw mapped
             }
         }
+
+        // Give the server enough time to either bind successfully or fail fast.
+        try await Task.sleep(for: .milliseconds(300))
+
+        if let bindError = await errorBox.get() {
+            task.cancel()
+            throw bindError
+        }
+
         runningTask = task
-
-        // Race between a short timeout (assume success) and an early error
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                // Wait up to 400 ms; if no error by then, consider startup successful
-                try await Task.sleep(for: .milliseconds(400))
-            }
-            group.addTask {
-                // Wait for signal from the server task
-                try await signal.waitForResult()
-            }
-            // Take whichever finishes first
-            try await group.next()
-            group.cancelAll()
-        }
-
-        // If the server task already completed with an error, propagate it
-        if await signal.failed {
-            runningTask = nil
-            throw await signal.error!
-        }
     }
 
     func stop() async {
@@ -89,44 +77,8 @@ actor ProxyServer {
     }
 }
 
-private actor StartupSignal {
-    private var state: State = .pending
-    private var waiters: [CheckedContinuation<Void, Error>] = []
-
-    enum State {
-        case pending
-        case started
-        case failed(Error)
-    }
-
-    var failed: Bool {
-        if case .failed = state { return true }
-        return false
-    }
-
-    var error: Error? {
-        if case .failed(let e) = state { return e }
-        return nil
-    }
-
-    func markStarted() {
-        guard case .pending = state else { return }
-        state = .started
-        // Don't resume waiters — let timeout handle success path
-    }
-
-    func markFailed(_ error: Error) {
-        guard case .pending = state else { return }
-        state = .failed(error)
-        for cont in waiters { cont.resume(throwing: error) }
-        waiters.removeAll()
-    }
-
-    func waitForResult() async throws {
-        if case .failed(let e) = state { throw e }
-        // Otherwise park until markFailed is called (or caller cancels via timeout)
-        try await withCheckedThrowingContinuation { cont in
-            waiters.append(cont)
-        }
-    }
+private actor ErrorBox {
+    private var error: Error?
+    func set(_ e: Error) { error = e }
+    func get() -> Error? { error }
 }
