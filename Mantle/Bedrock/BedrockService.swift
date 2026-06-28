@@ -10,6 +10,8 @@ actor BedrockService {
     private var currentRegion: String = ""
     private var currentProfile: String = ""
 
+    var clientObjectId: ObjectIdentifier? { client.map { ObjectIdentifier($0) } }
+
     func ensureClient(region: String, profile: String) async throws {
         guard region != currentRegion || profile != currentProfile || client == nil else { return }
 
