@@ -8,11 +8,7 @@ import SwiftUI
     var iconName: String { isRunning ? "circle.fill" : "circle" }
 
     private var server: ProxyServer?
-    private let settings: SettingsStore
-
-    init(settings: SettingsStore) {
-        self.settings = settings
-    }
+    private let settings = SettingsStore()
 
     func toggle() async {
         if isRunning {

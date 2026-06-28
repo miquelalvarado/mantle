@@ -24,6 +24,7 @@
 		B4000001000000000000001B /* ChatHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000002000000000000001B /* ChatHandler.swift */; };
 		B4000001000000000000001C /* ProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000002000000000000001C /* ProxyServer.swift */; };
 		B4000001000000000000001D /* ServerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000002000000000000001D /* ServerManager.swift */; };
+		B5000001000000000000001A /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5000002000000000000001A /* MenuBarView.swift */; };
 		T1000001000000000000001A /* MapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T1000002000000000000001A /* MapperTests.swift */; };
 		T1000001000000000000001B /* Mantle.app in Frameworks */ = {isa = PBXBuildFile; fileRef = F4F3C00414F6420CCC99E939 /* Mantle.app */; };
 		T2000001000000000000001A /* AWSBedrockRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = T2000002000000000000001A /* AWSBedrockRuntime */; };
@@ -37,6 +38,7 @@
 		B1000002000000000000001B /* LogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogStore.swift; sourceTree = "<group>"; };
 		B1000002000000000000001C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B1000002000000000000001D /* LogConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogConsoleView.swift; sourceTree = "<group>"; };
+		B5000002000000000000001A /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		B2000002000000000000001A /* OpenAITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAITypes.swift; sourceTree = "<group>"; };
 		B2000002000000000000001B /* HardcodedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardcodedModels.swift; sourceTree = "<group>"; };
 		B2000002000000000000001C /* OpenAIToBedrockMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIToBedrockMapper.swift; sourceTree = "<group>"; };
@@ -132,6 +134,7 @@
 		AA000001000000000000001E /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				B5000002000000000000001A /* MenuBarView.swift */,
 				B1000002000000000000001C /* SettingsView.swift */,
 				B1000002000000000000001D /* LogConsoleView.swift */,
 			);
@@ -319,6 +322,7 @@
 				B4000001000000000000001B /* ChatHandler.swift in Sources */,
 				B4000001000000000000001C /* ProxyServer.swift in Sources */,
 				B4000001000000000000001D /* ServerManager.swift in Sources */,
+				B5000001000000000000001A /* MenuBarView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
